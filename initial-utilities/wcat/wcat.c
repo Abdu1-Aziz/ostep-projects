@@ -1,12 +1,22 @@
 #include <stdio.h>
+#include <stdlib.h>
 
-int main(int argc, char *argv[])
-{
-    char  str[100];
-    FILE *fp;
-    fp = fopen(argv[1], "r");
-    while (fgets(str, sizeof str, fp) != NULL)
-        printf("%s\n", str);
-    fclose(fp);
+#define MAXLINE 1000
+
+int main(int argc, char *argv[]){
+    
+    for (int i = 1; i < argc; i++){
+        FILE *file = fopen(argv[i], "r");
+        if (file == NULL){
+            printf("wcat: cannot open file\n");
+            exit(1);
+        }
+
+        char  str[MAXLINE];
+        while (fgets(str, sizeof str, file) != NULL){
+            printf("%s", str);
+        }
+        fclose(file);
+    }
     return 0;
 }
