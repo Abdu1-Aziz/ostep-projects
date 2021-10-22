@@ -26,27 +26,27 @@ struct function_args {
   char *command;
 };
 
-void printError() {
+void print_error() {
 	char error_message[30] = "An error has occurred\n";
   	write(STDERR_FILENO, error_message, strlen(error_message));
 
 }
 
-void *parseInput(void *arg);
-int searchPath(char path[], char *firstArg);
+void *parse_input(void *arg);
+int search_path(char path[], char *firstArg);
 void redirect(FILE *out);
-void executeCommands(char *args[], int args_num, FILE *out);
+void execute_commands(char *args[], int args_num, FILE *out);
 char *trim(char *);
 void clean(void);
 
-FILE *in = NULL;
+FILE *stream = NULL;
 char *paths[B_SIZE] = {"/bin", NULL};
 char *line = NULL;
 
 
 void clean(void) {
   free(line);
-  fclose(in);
+  fclose(stream);
 }
 
 
@@ -66,7 +66,7 @@ char *trim(char *s) {
 }
 
 
-void *parseInput(void *arg) {
+void *parse_input(void *arg) {
   char *args[B_SIZE];
   int args_num = 0;
   FILE *output = stdout;
@@ -75,7 +75,7 @@ void *parseInput(void *arg) {
 
   char *command = strsep(&commandLine, ">");
   if (command == NULL || *command == '\0') {
-    printError();
+    print_error();
     return NULL;
   }
 
@@ -85,13 +85,13 @@ void *parseInput(void *arg) {
     // contain white space in the middle or ">"
     regex_t reg;
     if (regcomp(&reg, "\\S\\s+\\S", REG_CFLAGS) != 0) {
-      printError();
+      print_error();
       regfree(&reg);
       return NULL;
     }
     if (regexec(&reg, commandLine, 0, NULL, 0) == 0 ||
         strstr(commandLine, ">") != NULL) {
-      printError();
+      print_error();
       regfree(&reg);
       return NULL;
     }
@@ -99,7 +99,7 @@ void *parseInput(void *arg) {
     regfree(&reg);
 
     if ((output = fopen(trim(commandLine), "w")) == NULL) {
-      printError();
+      print_error();
       return NULL;
     }
   }
@@ -114,12 +114,12 @@ void *parseInput(void *arg) {
     }
 
   if (args_num > 0)
-    executeCommands(args, args_num, output);
+    execute_commands(args, args_num, output);
 
   return NULL;
 }
 
-int searchPath(char path[], char *firstArg) {
+int search_path(char path[], char *firstArg) {
   // search executable file in path
   int i = 0;
   while (paths[i] != NULL) {
@@ -134,38 +134,38 @@ int searchPath(char path[], char *firstArg) {
 void redirect(FILE *out) {
   int outFileno;
   if ((outFileno = fileno(out)) == -1) {
-    printError();
+    print_error();
     return;
   }
 
   if (outFileno != STDOUT_FILENO) {
     // redirect output
     if (dup2(outFileno, STDOUT_FILENO) == -1) {
-      printError();
+      print_error();
       return;
     }
     if (dup2(outFileno, STDERR_FILENO) == -1) {
-      printError();
+      print_error();
       return;
     }
     fclose(out);
   }
 }
 
-void executeCommands(char *args[], int args_num, FILE *out) {
+void execute_commands(char *args[], int args_num, FILE *out) {
   // check built-in commands first
   if (strcmp(args[0], "exit") == 0) {
     if (args_num > 1)
-      printError();
+      print_error();
     else {
       atexit(clean);
-      exit(EXIT_SUCCESS);
+      exit(1);
     }
   } else if (strcmp(args[0], "cd") == 0) {
     if (args_num == 1 || args_num > 2)
-      printError();
+      print_error();
     else if (chdir(args[1]) == -1)
-      printError();
+      print_error();
   } else if (strcmp(args[0], "path") == 0) {
     size_t i = 0;
     paths[0] = NULL;
@@ -176,42 +176,42 @@ void executeCommands(char *args[], int args_num, FILE *out) {
   } else {
     // not built-in commands
     char path[B_SIZE];
-    if (searchPath(path, args[0]) == 0) {
+    if (search_path(path, args[0]) == 0) {
       pid_t pid = fork();
       if (pid == -1)
-        printError();
+        print_error();
       else if (pid == 0) {
         // child process
         redirect(out);
 
         if (execv(path, args) == -1)
-          printError();
+          print_error();
       } else
         waitpid(pid, NULL, 0); // parent process waits child
     } else
-      printError(); // not fond in path
+      print_error(); // not fond in path
   }
 }
 
 int main (int argc, char **argv){
 	int mode = INTERACTIVE;
 	size_t linecap = 0;
-	in = stdin;
+	stream = stdin;
   char *line;
 	ssize_t nread;
 
 	if (argc > 1){
 		mode = BATCH;
-  	if(argc > 2 || (in = fopen(argv[1], "r")) == NULL){
-  		printError();
-  		exit(EXIT_FAILURE);
+  	if(argc > 2 || (stream = fopen(argv[1], "r")) == NULL){
+  		print_error();
+  		exit(0);
   	}
   }
 	while(1){
 		if (mode == INTERACTIVE)
 		printf("wish>");
 
-		if ((nread = getline(&line, &linecap, in)) > 0){
+		if ((nread = getline(&line, &linecap, stream)) > 0){
 			char *command;
 			int commands_num = 0;
 			struct function_args args[B_SIZE];
@@ -230,20 +230,20 @@ int main (int argc, char **argv){
 				}
       }
 			for (size_t i = 0; i < commands_num; i++){
-				if (pthread_create(&args[i].thread, NULL, &parseInput, &args[i]) != 0)
-					printError();
+				if (pthread_create(&args[i].thread, NULL, &parse_input, &args[i]) != 0)
+					print_error();
 			}
 			for (size_t i = 0; i < commands_num; i++){
 				if (pthread_join(args[i].thread, NULL) != 0)
-					printError();
+					print_error();
 				if (args[i].command != NULL)
 					free(args[i].command);
 			}
 				
-		}else if(feof(in) != 0){
-      //printError();
+		}else if(feof(stream) != 0){
+      //print_error();
 			atexit(clean);
-			exit(EXIT_SUCCESS);
+			exit(1);
 		}
 	}
 	return 0;
